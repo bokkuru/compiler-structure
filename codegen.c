@@ -336,6 +336,7 @@ codegen_exp (struct AST *ast)
         codegen_exp(ast->child[1]);
         emit_code(ast,"\tpopq   %%r10\n");
         emit_code(ast,"\tpopq   %%rax\n");
+        emit_code(ast,"\tcqto\n")//多分必要
         emit_code(ast,"\tidivq   %%r10,%%rax\n");
         emit_code(ast,"\tpushq   %%rax");
     } else if(!strcmp (ast->ast_type, "AST_expression_unary")){
