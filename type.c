@@ -155,27 +155,27 @@ type_analyze_declarator (struct AST *ast_decr, struct Type *type)
     struct Type *type1, *type2;
 
     if (!strcmp (ast_decr->ast_type, "AST_declarator_id")) {
-	type->id = ast_decr->child[0]->u.id;
-	return type;
+        type->id = ast_decr->child[0]->u.id;
+        return type;
     } else if (!strcmp (ast_decr->ast_type, "AST_declarator_pointer")) {
-	type1 = create_pointer_type (type);
-	type2 = type_analyze_declarator (ast_decr->child [0], type1);
-	type->id = type2->id;
-	return type2;
+        type1 = create_pointer_type (type);
+        type2 = type_analyze_declarator (ast_decr->child [0], type1);
+        type->id = type2->id;
+        return type2;
     } else if (!strcmp (ast_decr->ast_type, "AST_declarator_paren")) {
-	type1 = type_analyze_declarator (ast_decr->child [0], type);
-	return type1;
+        type1 = type_analyze_declarator (ast_decr->child [0], type);
+        return type1;
     } else if (!strcmp (ast_decr->ast_type, "AST_declarator_func1")) {
-	type1 = create_function_type (type);
-	type2 = type_analyze_declarator (ast_decr->child [0], type1);
-	type->id = type2->id;
-	set_arg_types (ast_decr->child [1], type1);
-	return type2;
+        type1 = create_function_type (type);
+        type2 = type_analyze_declarator (ast_decr->child [0], type1);
+        type->id = type2->id;
+        set_arg_types (ast_decr->child [1], type1);
+        return type2;
     } else if (!strcmp (ast_decr->ast_type, "AST_declarator_func2")) {
-	type1 = create_function_type (type);
-	type2 = type_analyze_declarator (ast_decr->child [0], type1);
-	type->id = type2->id;
-	return type2;
+        type1 = create_function_type (type);
+        type2 = type_analyze_declarator (ast_decr->child [0], type1);
+        type->id = type2->id;
+        return type2;
     }
 
     assert (0);

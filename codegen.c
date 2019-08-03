@@ -257,20 +257,62 @@ codegen_exp (struct AST *ast)
 static void
 codegen_stmt (struct AST *ast_stmt)
 {
+    char *label_goto;
     if (!strcmp (ast_stmt->ast_type, "AST_statement_exp")) {
-	if (!strcmp (ast_stmt->child [0]->ast_type, "AST_expression_opt_single")) {
-	    codegen_exp (ast_stmt->child [0]->child [0]);
+        if (!strcmp (ast_stmt->child [0]->ast_type, "AST_expression_opt_single")) {
+            codegen_exp (ast_stmt->child [0]->child [0]);
             emit_code (ast_stmt, "\taddq    $8, %%rsp\n");
-	} else if (!strcmp (ast_stmt->child [0]->ast_type, "AST_expression_opt_null")) {
-            /* nothing to do */
+        } else if (!strcmp (ast_stmt->child [0]->ast_type, "AST_expression_opt_null")) {
+                /* nothing to do */
         } else {
             assert (0);
         }
     } else if (!strcmp (ast_stmt->ast_type, "AST_statement_comp")) {
-	codegen_block (ast_stmt->child [0]);
+	    codegen_block (ast_stmt->child [0]);
 /*
     } else if (.....) {  // 他の statement の場合のコードをここに追加する
  */
+    } else if(!strcmp(ast_stmt->ast_type,"AST_statement_if")){
+        codegen_exp(ast_stmt->child[0]);
+        char *label1=create_ctrl_label();
+        emit_code(ast_stmt,"\tpopq   %%rax\n");
+        emit_code(ast_stmt,"\tcmpq   $0,%%rax\n");
+        emit_code(ast_stmt,"\tje     %s:\n",label1);
+        codegen_stmt(ast_stmt->child[1]);
+        emit_code(ast_stmt,"%s:\n",label1);
+    } else if(!strcmp(ast_stmt->ast_type,"AST_statement_ifelse")){
+        codegen_exp(ast_stmt->child[0]);
+        char *label1=create_ctrl_label();
+        char *label2=create_ctrl_label();
+        emit_code(ast_stmt,"\tpopq   %%rax\n");
+        emit_code(ast_stmt,"\tcmpq   $0,%%rax\n");
+        emit_code(ast_stmt,"\tje     %s:\n",label1);
+        codegen_stmt(ast_stmt->child[1]);
+        emit_code(ast_stmt,"\tje     %s:\n",label2);
+        emit_code(ast_stmt,"%s:\n",label1);
+        codegen_stmt(ast_stmt->child[2]);
+        emit_code(ast_stmt,"%s:\n",label2);
+    } else if(!strcmp(ast_stmt->ast_type,"AST_statement_while")){
+        char *label1=create_ctrl_label();
+        char *label2=create_ctrl_label();
+        emit_code(ast_stmt,"%s:\n",label1);
+        codegen_exp(ast_stmt->child[0]);
+        emit_code(ast_stmt,"\tpopq   %%rax\n");
+        emit_code(ast_stmt,"\tcmpq   $0,%%rax\n");
+        emit_code(ast_stmt,"\tje     %s:\n",label2);
+        codegen_stmt(ast_stmt->child[1]);
+        emit_code(ast_stmt,"\tje     %s:\n",label1);
+        emit_code(ast_stmt,"%s:\n",label2);
+    } else if(!strcmp(ast_stmt->ast_type,"AST_statement_goto")){
+        label_goto=create_ctrl_label();
+        emit_code(ast_stmt,"\tjmp     %s:\n",label_goto);
+    } else if(!strcmp(ast_stmt->ast_type,"AST_statement_label")){
+        emit_code(ast_stmt,"%s:\n",lebel_goto);
+    } else if(!strcmp(ast_stmt->ast_type,"AST_statement_return")){
+        codegen_exp(ast_stmt->child[0]);
+        emit_code(ast_stmt,"\tpopq   %%rax\n");
+        emit_code(ast_stmt,"\tpopq   %%rbp\n");
+        emit_code(ast_stmt,"\tretq\n");
     } else {
         assert (0);
     }
@@ -292,9 +334,9 @@ codegen_block (struct AST *ast_block)
             codegen_stmt (ast->child [1]);
         else
             assert (0);
-	if (ast == ast_stmt_list)
+	    if (ast == ast_stmt_list)
 	    break;
-	ast = ast->parent;
+	    ast = ast->parent;
     } 
     codegen_end_block ();
 }
