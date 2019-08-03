@@ -32,8 +32,8 @@ static int  is_library_func (char *libname);
 static void codegen_exp_id (struct AST *ast);
 static void codegen_exp_funcall (struct AST *ast);
 static void codegen_exp (struct AST *ast);
-static void codegen_stmt (struct AST *ast_stmt);
-static void codegen_block (struct AST *ast_block);
+static void codegen_stmt (struct AST *ast_stmt.char *label_return);
+static void codegen_block (struct AST *ast_block,char *label_return);
 static void codegen_func (struct AST *ast);
 static void codegen_dec (struct AST *ast);
 
@@ -255,7 +255,7 @@ codegen_exp (struct AST *ast)
 }
 
 static void
-codegen_stmt (struct AST *ast_stmt)
+codegen_stmt (struct AST *ast_stmt,char *label_return)
 {
     char *label_goto;
     if (!strcmp (ast_stmt->ast_type, "AST_statement_exp")) {
@@ -268,7 +268,7 @@ codegen_stmt (struct AST *ast_stmt)
             assert (0);
         }
     } else if (!strcmp (ast_stmt->ast_type, "AST_statement_comp")) {
-	    codegen_block (ast_stmt->child [0]);
+	    codegen_block (ast_stmt->child [0],label_return);
 /*
     } else if (.....) {  // 他の statement の場合のコードをここに追加する
  */
@@ -287,10 +287,10 @@ codegen_stmt (struct AST *ast_stmt)
         emit_code(ast_stmt,"\tpopq   %%rax\n");
         emit_code(ast_stmt,"\tcmpq   $0,%%rax\n");
         emit_code(ast_stmt,"\tje     %s:\n",label1);
-        codegen_stmt(ast_stmt->child[1]);
+        codegen_stmt(ast_stmt->child[1],label_return);
         emit_code(ast_stmt,"\tje     %s:\n",label2);
         emit_code(ast_stmt,"%s:\n",label1);
-        codegen_stmt(ast_stmt->child[2]);
+        codegen_stmt(ast_stmt->child[2],label_return);
         emit_code(ast_stmt,"%s:\n",label2);
     } else if(!strcmp(ast_stmt->ast_type,"AST_statement_while")){
         char *label1=create_ctrl_label();
@@ -300,7 +300,7 @@ codegen_stmt (struct AST *ast_stmt)
         emit_code(ast_stmt,"\tpopq   %%rax\n");
         emit_code(ast_stmt,"\tcmpq   $0,%%rax\n");
         emit_code(ast_stmt,"\tje     %s:\n",label2);
-        codegen_stmt(ast_stmt->child[1]);
+        codegen_stmt(ast_stmt->child[1],label_return);
         emit_code(ast_stmt,"\tje     %s:\n",label1);
         emit_code(ast_stmt,"%s:\n",label2);
     } else if(!strcmp(ast_stmt->ast_type,"AST_statement_goto")){
@@ -311,15 +311,14 @@ codegen_stmt (struct AST *ast_stmt)
     } else if(!strcmp(ast_stmt->ast_type,"AST_statement_return")){
         codegen_exp(ast_stmt->child[0]);
         emit_code(ast_stmt,"\tpopq   %%rax\n");
-        emit_code(ast_stmt,"\tpopq   %%rbp\n");
-        emit_code(ast_stmt,"\tretq\n");
+        emit_code(ast_stmt,"\tjmp     %s:\n",label_return);
     } else {
         assert (0);
     }
 }
 
 static void
-codegen_block (struct AST *ast_block)
+codegen_block (struct AST *ast_block,char *label_return)
 {
     struct AST *ast, *ast_stmt_list;
     assert (!strcmp (ast_block->ast_type, "AST_compound_statement"));
@@ -329,9 +328,9 @@ codegen_block (struct AST *ast_block)
     ast = search_AST_bottom (ast_stmt_list, "AST_statement_list_single", NULL);
     while (1) {
         if (!strcmp (ast->ast_type, "AST_statement_list_single"))
-            codegen_stmt (ast->child [0]); 
+            codegen_stmt (ast->child [0],label_return); 
         else if (!strcmp (ast->ast_type, "AST_statement_list_pair"))
-            codegen_stmt (ast->child [1]);
+            codegen_stmt (ast->child [1],label_return);
         else
             assert (0);
 	    if (ast == ast_stmt_list)
@@ -362,6 +361,7 @@ static void
 codegen_func (struct AST *ast)
 {
     struct String *string, *head;
+    char *label_return=create_ctrl_label();
 
     assert (!strcmp (ast->ast_type, "AST_function_definition"));
 
@@ -391,11 +391,12 @@ codegen_func (struct AST *ast)
     emit_code (ast, "\tsubq    $%d, %%rsp\n", total_local_size);
 
     /* function body */
-    codegen_block (ast->child [2]);
+    codegen_block (ast->child [2],label_return);
 
     /* function epilogue */
     emit_code (ast, "%s.RE.%s:\n", LABEL_PREFIX, func_name);
     emit_code (ast, "\tmovq    %%rbp, %%rsp\n");
+    emit_code (ast, "\t%s\n:",label_return);
     emit_code (ast, "\tpopq    %%rbp\n");
     emit_code (ast, "\tretq\n");
 
