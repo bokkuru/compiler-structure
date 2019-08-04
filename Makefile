@@ -1,6 +1,7 @@
 XCC_HDR = xcc.h  AST.h type.h symbol.h misc.h codegen.h
 XCC_SRC =        AST.c type.c symbol.c misc.c codegen.c
-LIBS    = -lfl -L/opt/local/lib
+#LIBS    = -lfl -L/opt/local/lib
+LIBS   =-ll
 WARNING = -Wall -Wstrict-prototypes -Wmissing-prototypes -Wmissing-declarations
 
 all: xcc

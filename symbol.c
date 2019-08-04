@@ -214,14 +214,6 @@ create_string_label (void)
     snprintf (label, 32, "STR%d", num++);
     return label;
 }
-static char *
-create_ctrl_label (void)
-{
-    static int num = 0;
-    char *label = emalloc (32);
-    snprintf (label, 32, "CTRL%d", num++);
-    return label;
-}
 
 void
 string_entry (char *data)

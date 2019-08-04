@@ -32,11 +32,11 @@ static int  is_library_func (char *libname);
 static void codegen_exp_id (struct AST *ast);
 static void codegen_exp_funcall (struct AST *ast);
 static void codegen_exp (struct AST *ast);
-static void codegen_stmt (struct AST *ast_stmt.char *label_return);
+static void codegen_stmt (struct AST *ast_stmt,char *label_return);
 static void codegen_block (struct AST *ast_block,char *label_return);
 static void codegen_func (struct AST *ast);
 static void codegen_dec (struct AST *ast);
-
+static char *create_ctrl_label (void);
 /* ---------------------------------------------------------------------- */
 static char *library_funcs [] = {
     // 必要に応じて呼び出したいライブラリ関数を追加する
@@ -99,6 +99,14 @@ is_library_func (char *libname)
 // ここから上は（関数プロトタイプ宣言の追加等以外は）修正や拡張は不要のはず
 /* ---------------------------------------------------------------------- */
 // ここから下は好きに修正や拡張をしても構わない
+static char *
+create_ctrl_label (void)
+{
+    static int num = 0;
+    char *label = emalloc (32);
+    snprintf (label, 32, "CTRL%d", num++);
+    return label;
+}
 
 static void
 codegen_exp_id (struct AST *ast)
@@ -278,7 +286,6 @@ codegen_exp (struct AST *ast)
     } else if(!strcmp (ast->ast_type, "AST_expression_land")){
         char *label1=create_ctrl_label();
         char *label2=create_ctrl_label();
-        char *label3=create_ctrl_label();
         codegen_exp(ast->child[0]);
         emit_code(ast,"\tpopq   %%rax\n");
         emit_code(ast,"\tcmpq   $0,%%rax\n");
@@ -336,7 +343,7 @@ codegen_exp (struct AST *ast)
         codegen_exp(ast->child[1]);
         emit_code(ast,"\tpopq   %%r10\n");
         emit_code(ast,"\tpopq   %%rax\n");
-        emit_code(ast,"\tcqto\n")//多分必要
+        emit_code(ast,"\tcqto\n");//多分必要
         emit_code(ast,"\tidivq   %%r10,%%rax\n");
         emit_code(ast,"\tpushq   %%rax");
     } else if(!strcmp (ast->ast_type, "AST_expression_unary")){
@@ -353,7 +360,7 @@ codegen_exp (struct AST *ast)
 static void
 codegen_stmt (struct AST *ast_stmt,char *label_return)
 {
-    char *label_goto;
+    char *label_goto=NULL;
     if (!strcmp (ast_stmt->ast_type, "AST_statement_exp")) {
         if (!strcmp (ast_stmt->child [0]->ast_type, "AST_expression_opt_single")) {
             codegen_exp (ast_stmt->child [0]->child [0]);
@@ -376,7 +383,7 @@ codegen_stmt (struct AST *ast_stmt,char *label_return)
         emit_code(ast_stmt,"\tpopq   %%rax\n");
         emit_code(ast_stmt,"\tcmpq   $0,%%rax\n");
         emit_code(ast_stmt,"\tje     %s:\n",label1);
-        codegen_stmt(ast_stmt->child[1]);
+        codegen_stmt(ast_stmt->child[1],label_return);
         emit_code(ast_stmt,"%s:\n",label1);
     } else if(!strcmp(ast_stmt->ast_type,"AST_statement_ifelse")){
         codegen_exp(ast_stmt->child[0]);
@@ -405,7 +412,8 @@ codegen_stmt (struct AST *ast_stmt,char *label_return)
         label_goto=create_ctrl_label();
         emit_code(ast_stmt,"\tjmp     %s:\n",label_goto);
     } else if(!strcmp(ast_stmt->ast_type,"AST_statement_label")){
-        emit_code(ast_stmt,"%s:\n",lebel_goto);
+        if(label_goto==NULL)assert(0);
+        emit_code(ast_stmt,"%s:\n",label_goto);
     } else if(!strcmp(ast_stmt->ast_type,"AST_statement_return")){
         codegen_exp(ast_stmt->child[0]);
         emit_code(ast_stmt,"\tpopq   %%rax\n");
