@@ -29,9 +29,9 @@ static void codegen_begin_function (struct AST *ast);
 static void codegen_end_function (void);
 static int  is_library_func (char *libname);
 
-static void codegen_exp_id (struct AST *ast);
+static void codegen_exp_id (struct AST *ast,char *order);
 static void codegen_exp_funcall (struct AST *ast);
-static void codegen_exp (struct AST *ast);
+static void codegen_exp (struct AST *ast,char *order);
 static void codegen_stmt (struct AST *ast_stmt,char *label_return);
 static void codegen_block (struct AST *ast_block,char *label_return);
 static void codegen_func (struct AST *ast);
@@ -109,7 +109,7 @@ create_ctrl_label (void)
 }
 
 static void
-codegen_exp_id (struct AST *ast)
+codegen_exp_id (struct AST *ast,char *order)
 {
     int offset;
     char *reg = "%rax";
@@ -142,8 +142,12 @@ codegen_exp_id (struct AST *ast)
 
         if (!((sym->name_space == NS_ARG) && (sym->offset <= 40))) { // other than 1st-6th arguments
             // char型，int型には非対応
-            emit_code (ast, "\tmovq    %d(%%rbp), %%rax \t# %s, %d\n",
-                       offset, sym->name, sym->offset);
+            if(order==NULL||!strcmp(order,"left")){
+                emit_code (ast, "\tleaq    %d(%%rbp), %%rax \t# %s, %d\n",offset, sym->name, sym->offset);
+            }else if(!strcmp(order,"right")){
+                emit_code (ast, "\tmovq    %d(%%rbp), %%rax \t# %s, %d\n",offset, sym->name, sym->offset);
+            }
+                
         }
         emit_code (ast, "\tpushq   %s\n", reg);
 	break;
@@ -156,7 +160,22 @@ codegen_exp_id (struct AST *ast)
                 emit_code (ast, "\tleaq    _%s(%%rip), %%rax\n", sym->name);
             }
             emit_code (ast, "\tpushq   %%rax\n");
-        } else {
+        }else if(sym->type->kind == TYPE_KIND_PRIM){
+            if(sym->type->u.t_prim.ptype==PRIM_TYPE_VOID){
+            }else if(sym->type->u.t_prim.ptype==PRIM_TYPE_CHAR){
+            }else if(sym->type->u.t_prim.ptype==PRIM_TYPE_INT){
+                if(order==NULL||!strcmp(order,"left")){
+                    emit_code(ast,"\tleaq   _%s(%%rip),%%rax\n",sym->name);
+                }else if(!strcmp(order,"right")){
+                    emit_code(ast,"\tmovslq   _%s(%%rip),%%rax\n",sym->name);
+                }
+                emit_code (ast, "\tpushq   %%rax\n");
+            }else if(sym->type->u.t_prim.ptype==PRIM_TYPE_LONG){
+                
+            }else{
+                assert(0);
+            }
+        } else{
             emit_code (ast, "\tpushq   _%s(%%rip)\n", sym->name);
         }
 	break;
@@ -207,14 +226,14 @@ codegen_exp_funcall (struct AST *ast_func)
                 assert (0);
 	    }
             args_size += ROUNDUP_LONG (ast_exp->type->size);
-	    codegen_exp (ast_exp);
+	    codegen_exp (ast_exp,"right");
 	    if (!strcmp (ast->ast_type,
                          "AST_argument_expression_list_single"))
                 break;
 	}
     }
 
-    codegen_exp (ast_func->child [0]);
+    codegen_exp (ast_func->child [0],NULL);
     emit_code (ast_func, "\tpopq    %%rax\n");
 
     // move 1st-6th args to registers
@@ -237,7 +256,7 @@ codegen_exp_funcall (struct AST *ast_func)
 }
 
 static void
-codegen_exp (struct AST *ast)
+codegen_exp (struct AST *ast,char *order)
 {
     if (   !strcmp (ast->ast_type, "AST_expression_int")
         || !strcmp (ast->ast_type, "AST_expression_char")
@@ -250,7 +269,7 @@ codegen_exp (struct AST *ast)
                    LABEL_PREFIX, string->label, string->data);
         emit_code (ast, "\tpushq   %%rax\n");
     } else if (!strcmp (ast->ast_type, "AST_expression_id")) {
-	    codegen_exp_id (ast);
+	    codegen_exp_id (ast,order);
     } else if (   !strcmp (ast->ast_type, "AST_expression_funcall1")
                || !strcmp (ast->ast_type, "AST_expression_funcall2")) {
 	    codegen_exp_funcall (ast);
@@ -258,101 +277,119 @@ codegen_exp (struct AST *ast)
     } else if (.....) {  // 他の expression の場合のコードをここに追加する
  */
     } else if(!strcmp (ast->ast_type, "AST_expression_assign")){
-        codegen_exp(ast->child[1]);
-        codegen_exp(ast->child[0]);
+        codegen_exp(ast->child[1],"right");
+        codegen_exp(ast->child[0],"left");
         emit_code(ast,"\tpopq   %%rax\n");
         emit_code(ast,"\tpopq   %%r10\n");
-        emit_code(ast,"\tmovq   %%r10, 0(%rax)\n");
+        if(!strcmp(ast->child[0]->ast_type,"AST_expression_id")){
+            if(sym_lookup(ast->child[0]->child[0]->u.id)->type->u.t_prim.ptype==PRIM_TYPE_LONG){
+                emit_code(ast,"\tmovq   %%r10, 0(%%rax)\n");
+            }else{
+                emit_code(ast,"\tmovl   %%r10d, 0(%%rax)\n");
+            }
+        }else if(!strcmp(ast->child[0]->ast_type,"AST_unary_operator_deref")){
+        }
         emit_code(ast,"\tpushq   %%r10\n");
     } else if(!strcmp (ast->ast_type, "AST_expression_lor")){
         char *label1=create_ctrl_label();
         char *label2=create_ctrl_label();
         char *label3=create_ctrl_label();
-        codegen_exp(ast->child[0]);
+        codegen_exp(ast->child[0],NULL);
         emit_code(ast,"\tpopq   %%rax\n");
         emit_code(ast,"\tcmpq   $0,%%rax\n");
-        emit_code(ast,"\tjne   %s",label1);
-        codegen_exp(ast->child[1]);
+        emit_code(ast,"\tjne   %s\n",label1);
+        codegen_exp(ast->child[1],NULL);
         emit_code(ast,"\tpopq   %%rax\n");
         emit_code(ast,"\tcmpq   $0,%%rax\n");
-        emit_code(ast,"\tjne   %s",label1);
-        emit_code(ast,"\tjmp   %s",label2);
+        emit_code(ast,"\tjne   %s\n",label1);
+        emit_code(ast,"\tjmp   %s\n",label2);
         emit_code(ast,"%s:\n",label1);
-        emit_code(ast,"\tpushq   $1");
-        emit_code(ast,"\tjmp   %s",label3);
+        emit_code(ast,"\tpushq   $1\n");
+        emit_code(ast,"\tjmp   %s\n",label3);
         emit_code(ast,"%s:\n",label2);
-        emit_code(ast,"\tpushq   $0");
+        emit_code(ast,"\tpushq   $0\n");
         emit_code(ast,"%s:\n",label3);
     } else if(!strcmp (ast->ast_type, "AST_expression_land")){
         char *label1=create_ctrl_label();
         char *label2=create_ctrl_label();
-        codegen_exp(ast->child[0]);
+        codegen_exp(ast->child[0],NULL);
         emit_code(ast,"\tpopq   %%rax\n");
         emit_code(ast,"\tcmpq   $0,%%rax\n");
-        emit_code(ast,"\tje   %s",label1);
-        codegen_exp(ast->child[1]);
+        emit_code(ast,"\tje   %s\n",label1);
+        codegen_exp(ast->child[1],NULL);
         emit_code(ast,"\tpopq   %%rax\n");
         emit_code(ast,"\tcmpq   $0,%%rax\n");
-        emit_code(ast,"\tje   %s",label1);
+        emit_code(ast,"\tje   %s\n",label1);
         emit_code(ast,"\tpushq   $1");
-        emit_code(ast,"\tjmp   %s",label2);
+        emit_code(ast,"\tjmp   %s\n",label2);
         emit_code(ast,"%s:\n",label1);
         emit_code(ast,"\tpushq   $0");
         emit_code(ast,"%s:\n",label2);
     } else if(!strcmp (ast->ast_type, "AST_expression_eq")){
-        codegen_exp(ast->child[0]);
-        codegen_exp(ast->child[1]);
+        codegen_exp(ast->child[0],"right");
+        codegen_exp(ast->child[1],"right");
         emit_code(ast,"\tpopq   %%r10\n");
         emit_code(ast,"\tpopq   %%rax\n");
         emit_code(ast,"\tcmpq   %%r10,%%rax\n");
-        emit_code(ast,"\tsete   %%al");
-        emit_code(ast,"\tmovzbq   %%al,%%rax");
-        emit_code(ast,"\tpushq   %%rax");
+        emit_code(ast,"\tsete   %%al\n");
+        emit_code(ast,"\tmovzbq   %%al,%%rax\n");
+        emit_code(ast,"\tpushq   %%rax\n");
     } else if(!strcmp (ast->ast_type, "AST_expression_less")){
-        codegen_exp(ast->child[0]);
-        codegen_exp(ast->child[1]);
+        codegen_exp(ast->child[0],"right");
+        codegen_exp(ast->child[1],"right");
         emit_code(ast,"\tpopq   %%r10\n");
         emit_code(ast,"\tpopq   %%rax\n");
         emit_code(ast,"\tcmpq   %%r10,%%rax\n");
-        emit_code(ast,"\tsetl   %%al");
-        emit_code(ast,"\tmovzbq   %%al,%%rax");
-        emit_code(ast,"\tpushq   %%rax");
+        emit_code(ast,"\tsetl   %%al\n");
+        emit_code(ast,"\tmovzbq   %%al,%%rax\n");
+        emit_code(ast,"\tpushq   %%rax\n");
     } else if(!strcmp (ast->ast_type, "AST_expression_add")){
-        codegen_exp(ast->child[0]);
-        codegen_exp(ast->child[1]);
+        codegen_exp(ast->child[0],"right");
+        codegen_exp(ast->child[1],"right");
         emit_code(ast,"\tpopq   %%r10\n");
         emit_code(ast,"\tpopq   %%rax\n");
         emit_code(ast,"\taddq   %%r10,%%rax\n");
-        emit_code(ast,"\tpushq   %%rax");
+        emit_code(ast,"\tpushq   %%rax\n");
     } else if(!strcmp (ast->ast_type, "AST_expression_sub")){
-        codegen_exp(ast->child[0]);
-        codegen_exp(ast->child[1]);
+        codegen_exp(ast->child[0],"right");
+        codegen_exp(ast->child[1],"right");
         emit_code(ast,"\tpopq   %%r10\n");
         emit_code(ast,"\tpopq   %%rax\n");
         emit_code(ast,"\tsubq   %%r10,%%rax\n");
-        emit_code(ast,"\tpushq   %%rax");
+        emit_code(ast,"\tpushq   %%rax\n");
     } else if(!strcmp (ast->ast_type, "AST_expression_mul")){
-        codegen_exp(ast->child[0]);
-        codegen_exp(ast->child[1]);
+        codegen_exp(ast->child[0],"right");
+        codegen_exp(ast->child[1],"right");
         emit_code(ast,"\tpopq   %%r10\n");
         emit_code(ast,"\tpopq   %%rax\n");
         emit_code(ast,"\timulq   %%r10,%%rax\n");
-        emit_code(ast,"\tpushq   %%rax");
+        emit_code(ast,"\tpushq   %%rax\n");
     } else if(!strcmp (ast->ast_type, "AST_expression_div")){
-        codegen_exp(ast->child[0]);
-        codegen_exp(ast->child[1]);
+        codegen_exp(ast->child[0],"right");
+        codegen_exp(ast->child[1],"right");
         emit_code(ast,"\tpopq   %%r10\n");
         emit_code(ast,"\tpopq   %%rax\n");
         emit_code(ast,"\tcqto\n");//多分必要
         emit_code(ast,"\tidivq   %%r10,%%rax\n");
         emit_code(ast,"\tpushq   %%rax");
     } else if(!strcmp (ast->ast_type, "AST_expression_unary")){
-
+        if(!strcmp(ast->child[0]->ast_type,"AST_unary_operator_deref")){
+            if(!strcmp(order,"right")){
+                codegen_exp(ast->child[1],"right");
+                emit_code(ast,"\tpopq   %%rax\n");
+                emit_code(ast,"\tmovq   0(%%rax),%%rax\n");
+                emit_code(ast,"\tpushq   %%rax\n");
+            }else if(!strcmp(order,"left")){
+                codegen_exp(ast->child[1],"left");
+            }
+        }else if(!strcmp(ast->child[0]->ast_type,"AST_unary_operator_adress")){
+        }
     } else if(!strcmp (ast->ast_type, "AST_expression_list")){
 
     } else if(!strcmp (ast->ast_type, "AST_expression_paren")){
 
     } else {
+        printf("%s\n",ast->ast_type);
         assert (0);
     }
 }
@@ -363,7 +400,7 @@ codegen_stmt (struct AST *ast_stmt,char *label_return)
     char *label_goto=NULL;
     if (!strcmp (ast_stmt->ast_type, "AST_statement_exp")) {
         if (!strcmp (ast_stmt->child [0]->ast_type, "AST_expression_opt_single")) {
-            codegen_exp (ast_stmt->child [0]->child [0]);
+            codegen_exp (ast_stmt->child [0]->child [0],NULL);
             emit_code (ast_stmt, "\taddq    $8, %%rsp\n");
         } else if (!strcmp (ast_stmt->child [0]->ast_type, "AST_expression_opt_null")) {
                 /* nothing to do */
@@ -378,22 +415,22 @@ codegen_stmt (struct AST *ast_stmt,char *label_return)
     } else if(!strcmp(ast_stmt->ast_type,"AST_statement_comp")){
 
     } else if(!strcmp(ast_stmt->ast_type,"AST_statement_if")){
-        codegen_exp(ast_stmt->child[0]);
+        codegen_exp(ast_stmt->child[0],NULL);
         char *label1=create_ctrl_label();
         emit_code(ast_stmt,"\tpopq   %%rax\n");
         emit_code(ast_stmt,"\tcmpq   $0,%%rax\n");
-        emit_code(ast_stmt,"\tje     %s:\n",label1);
+        emit_code(ast_stmt,"\tje     %s\n",label1);
         codegen_stmt(ast_stmt->child[1],label_return);
         emit_code(ast_stmt,"%s:\n",label1);
     } else if(!strcmp(ast_stmt->ast_type,"AST_statement_ifelse")){
-        codegen_exp(ast_stmt->child[0]);
+        codegen_exp(ast_stmt->child[0],NULL);
         char *label1=create_ctrl_label();
         char *label2=create_ctrl_label();
         emit_code(ast_stmt,"\tpopq   %%rax\n");
         emit_code(ast_stmt,"\tcmpq   $0,%%rax\n");
-        emit_code(ast_stmt,"\tje     %s:\n",label1);
+        emit_code(ast_stmt,"\tje     %s\n",label1);
         codegen_stmt(ast_stmt->child[1],label_return);
-        emit_code(ast_stmt,"\tje     %s:\n",label2);
+        emit_code(ast_stmt,"\tjmp     %s\n",label2);
         emit_code(ast_stmt,"%s:\n",label1);
         codegen_stmt(ast_stmt->child[2],label_return);
         emit_code(ast_stmt,"%s:\n",label2);
@@ -401,23 +438,29 @@ codegen_stmt (struct AST *ast_stmt,char *label_return)
         char *label1=create_ctrl_label();
         char *label2=create_ctrl_label();
         emit_code(ast_stmt,"%s:\n",label1);
-        codegen_exp(ast_stmt->child[0]);
+        codegen_exp(ast_stmt->child[0],NULL);
         emit_code(ast_stmt,"\tpopq   %%rax\n");
         emit_code(ast_stmt,"\tcmpq   $0,%%rax\n");
-        emit_code(ast_stmt,"\tje     %s:\n",label2);
+        emit_code(ast_stmt,"\tje     %s\n",label2);
         codegen_stmt(ast_stmt->child[1],label_return);
-        emit_code(ast_stmt,"\tje     %s:\n",label1);
+        emit_code(ast_stmt,"\tjmp     %s\n",label1);
         emit_code(ast_stmt,"%s:\n",label2);
     } else if(!strcmp(ast_stmt->ast_type,"AST_statement_goto")){
         label_goto=create_ctrl_label();
-        emit_code(ast_stmt,"\tjmp     %s:\n",label_goto);
+        emit_code(ast_stmt,"\tjmp     %s\n",label_goto);
     } else if(!strcmp(ast_stmt->ast_type,"AST_statement_label")){
         if(label_goto==NULL)assert(0);
         emit_code(ast_stmt,"%s:\n",label_goto);
     } else if(!strcmp(ast_stmt->ast_type,"AST_statement_return")){
-        codegen_exp(ast_stmt->child[0]);
+         if (!strcmp (ast_stmt->child [0]->ast_type, "AST_expression_opt_single")) {
+            codegen_exp (ast_stmt->child [0]->child [0],NULL);
+        } else if (!strcmp (ast_stmt->child [0]->ast_type, "AST_expression_opt_null")) {
+                /* nothing to do */
+        } else {
+            assert (0);
+        }
         emit_code(ast_stmt,"\tpopq   %%rax\n");
-        emit_code(ast_stmt,"\tjmp     %s:\n",label_return);
+        emit_code(ast_stmt,"\tjmp     %s\n",label_return);
     } else {
         assert (0);
     }
@@ -458,6 +501,8 @@ codegen_dec (struct AST *ast)
     // char型，int型には非対応
     if (ast->type->size == 8) {
         emit_code (ast, "\t.p2align  3\n");
+    }else if(ast->type->size==4){
+        emit_code(ast,"\t.p2align  2\n");
     }
     emit_code (ast, "_%s:\n", ast->type->id);
     emit_code (ast, "\t.skip   %d\n\n", ast->type->size);
@@ -502,7 +547,7 @@ codegen_func (struct AST *ast)
     /* function epilogue */
     emit_code (ast, "%s.RE.%s:\n", LABEL_PREFIX, func_name);
     emit_code (ast, "\tmovq    %%rbp, %%rsp\n");
-    emit_code (ast, "\t%s\n:",label_return);
+    emit_code (ast, "%s:\n",label_return);
     emit_code (ast, "\tpopq    %%rbp\n");
     emit_code (ast, "\tretq\n");
 
