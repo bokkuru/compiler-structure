@@ -1,3 +1,4 @@
+
 /* XCC (x86): Experimental C-subset Compiler.
   Copyright (c) 2002-2019, gondow@cs.titech.ac.jp, All rights reserved.
   $Id: codegen.c,v 1.8 2019/05/28 02:42:04 gondow Exp gondow $ */ 
@@ -284,10 +285,15 @@ codegen_exp (struct AST *ast,char *order)
         if(!strcmp(ast->child[0]->ast_type,"AST_expression_id")){
             if(sym_lookup(ast->child[0]->child[0]->u.id)->type->u.t_prim.ptype==PRIM_TYPE_LONG){
                 emit_code(ast,"\tmovq   %%r10, 0(%%rax)\n");
-            }else{
+            }else if(sym_lookup(ast->child[0]->child[0]->u.id)->type->u.t_prim.ptype==PRIM_TYPE_INT){
                 emit_code(ast,"\tmovl   %%r10d, 0(%%rax)\n");
+            }else if(sym_lookup(ast->child[0]->child[0]->u.id)->type->u.t_prim.ptype==PRIM_TYPE_CHAR){
+
+            }else {
+
             }
         }else if(!strcmp(ast->child[0]->ast_type,"AST_unary_operator_deref")){
+            emit_code(ast,"\tmovq   %%r10, 0(%%rax)\n");
         }
         emit_code(ast,"\tpushq   %%r10\n");
     } else if(!strcmp (ast->ast_type, "AST_expression_lor")){
@@ -346,6 +352,11 @@ codegen_exp (struct AST *ast,char *order)
     } else if(!strcmp (ast->ast_type, "AST_expression_add")){
         codegen_exp(ast->child[0],"right");
         codegen_exp(ast->child[1],"right");
+        if(!strcmp(order,"paren")){
+            emit_code(ast,"\tpopq   %%rax\n");
+            emit_code(ast,"\timulq   $8,%%rax\n");
+            emit_code(ast,"\tpushq   %%rax\n");
+        }
         emit_code(ast,"\tpopq   %%r10\n");
         emit_code(ast,"\tpopq   %%rax\n");
         emit_code(ast,"\taddq   %%r10,%%rax\n");
@@ -353,6 +364,11 @@ codegen_exp (struct AST *ast,char *order)
     } else if(!strcmp (ast->ast_type, "AST_expression_sub")){
         codegen_exp(ast->child[0],"right");
         codegen_exp(ast->child[1],"right");
+        if(!strcmp(order,"paren")){
+            emit_code(ast,"\tpopq   %%rax\n");
+            emit_code(ast,"\timulq   $8,%%rax\n");
+            emit_code(ast,"\tpushq   %%rax\n");
+        }
         emit_code(ast,"\tpopq   %%r10\n");
         emit_code(ast,"\tpopq   %%rax\n");
         emit_code(ast,"\tsubq   %%r10,%%rax\n");
@@ -360,6 +376,11 @@ codegen_exp (struct AST *ast,char *order)
     } else if(!strcmp (ast->ast_type, "AST_expression_mul")){
         codegen_exp(ast->child[0],"right");
         codegen_exp(ast->child[1],"right");
+        if(!strcmp(order,"paren")){
+            emit_code(ast,"\tpopq   %%rax\n");
+            emit_code(ast,"\timulq   $8,%%rax\n");
+            emit_code(ast,"\tpushq   %%rax\n");
+        }
         emit_code(ast,"\tpopq   %%r10\n");
         emit_code(ast,"\tpopq   %%rax\n");
         emit_code(ast,"\timulq   %%r10,%%rax\n");
@@ -367,9 +388,14 @@ codegen_exp (struct AST *ast,char *order)
     } else if(!strcmp (ast->ast_type, "AST_expression_div")){
         codegen_exp(ast->child[0],"right");
         codegen_exp(ast->child[1],"right");
+        if(!strcmp(order,"paren")){
+            emit_code(ast,"\tpopq   %%rax\n");
+            emit_code(ast,"\timulq   $8,%%rax\n");
+            emit_code(ast,"\tpushq   %%rax\n");
+        }
         emit_code(ast,"\tpopq   %%r10\n");
         emit_code(ast,"\tpopq   %%rax\n");
-        emit_code(ast,"\tcqto\n");//多分必要
+        emit_code(ast,"\tcqto\n");
         emit_code(ast,"\tidivq   %%r10,%%rax\n");
         emit_code(ast,"\tpushq   %%rax");
     } else if(!strcmp (ast->ast_type, "AST_expression_unary")){
@@ -383,11 +409,15 @@ codegen_exp (struct AST *ast,char *order)
                 codegen_exp(ast->child[1],"left");
             }
         }else if(!strcmp(ast->child[0]->ast_type,"AST_unary_operator_adress")){
+            if(!strcmp(order,"right")){
+                codegen_exp(ast->child[0],"right");
+            }else if(!strcmp(order,"left")){
+            }
         }
     } else if(!strcmp (ast->ast_type, "AST_expression_list")){
 
     } else if(!strcmp (ast->ast_type, "AST_expression_paren")){
-
+        codegen_exp(ast->child[0],"paren");
     } else {
         printf("%s\n",ast->ast_type);
         assert (0);
